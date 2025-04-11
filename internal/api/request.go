@@ -42,17 +42,29 @@ func FetchLineups(fixtureID int) (LineupResponse, error) {
 	return lineups, err
 }
 
-func FetchPlayers(fixtureID int) (PlayersResponse, error) {
+func FetchPlayers(fixtureID int) (PlayersResponse, bool, error) {
 	endpoint := fmt.Sprintf("%s/fixtures/players?fixture=%d", os.Getenv("API_BASE_URL"), fixtureID)
 	resp, err := makeRequest(endpoint)
 	if err != nil {
-		return PlayersResponse{}, err
+		return PlayersResponse{}, false, err
 	}
 	defer resp.Body.Close()
+	remainingStr := resp.Header.Get("x-ratelimit-requests-remaining")
+	remaining, err := strconv.Atoi(remainingStr)
+	if err != nil {
+		return PlayersResponse{}, false, fmt.Errorf("Ошибка парсинга x-ratelimit-requests-remaining: %v", err)
+	}
 
 	var players PlayersResponse
 	err = json.NewDecoder(resp.Body).Decode(&players)
-	return players, err
+	if err != nil {
+		return PlayersResponse{}, false, fmt.Errorf("Ошибка декодирования данных: %v", err)
+	}
+	if remaining < 3 {
+		fmt.Println("Меньше 3 запросов осталось. Завершаем обработку")
+		return players, false, nil
+	}
+	return players, true, nil
 }
 
 func FetchSeasonMatches(leagueID int, season string) ([]models.Match, error) {

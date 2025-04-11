@@ -74,7 +74,7 @@ func processMatches(leagueID int, season string, matches []models.Match) {
 			continue
 		}
 
-		players, err := api.FetchPlayers(match.ID)
+		players, canContinue, err := api.FetchPlayers(match.ID)
 		if err != nil {
 			fmt.Printf("Ошибка событий: %v\n", err)
 			continue
@@ -85,6 +85,9 @@ func processMatches(leagueID int, season string, matches []models.Match) {
 
 		db.SaveMatchDetails(match, leagueID, season, parsedStats, parsedLineups)
 		cache.MarkMatchAsProcessed(leagueID, season, match.ID)
+		if !canContinue {
+			break
+		}
 	}
 }
 func processCachedMatches() {
