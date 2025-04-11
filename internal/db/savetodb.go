@@ -64,10 +64,8 @@ func SaveMatchDetails(match models.Match, leagueID int, season string, stats mod
 		match.AwayFormation,
 	)
 	if err != nil {
-		return fmt.Errorf("ошибка сохранения матча: %v", err)
+		return fmt.Errorf("ошибка сохранения матча ID=%d: %v\n", match.ID, err)
 	}
-
-	// 2. Сохраняем статистику матча
 	_, err = tx.Exec(`
         INSERT INTO match_statistics (
             match_id, home_ball_possession, away_ball_possession,
@@ -87,7 +85,7 @@ func SaveMatchDetails(match models.Match, leagueID int, season string, stats mod
             home_passes_accurate, away_passes_accurate,
             home_passes_percentage, away_passes_percentage
         ) VALUES (
-            $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31
+            $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33 
         )
         ON CONFLICT (match_id) DO NOTHING
     `,
@@ -126,10 +124,9 @@ func SaveMatchDetails(match models.Match, leagueID int, season string, stats mod
 		stats.AwayPassesPercentage,
 	)
 	if err != nil {
-		return err
+		return fmt.Errorf("ошибка статистики матча ID=%d: %v\n", match.ID, err)
 	}
 
-	// 3. Сохраняем составы игроков
 	for _, lineup := range lineups {
 		_, err = tx.Exec(`
             INSERT INTO lineups (
@@ -172,10 +169,9 @@ func SaveMatchDetails(match models.Match, leagueID int, season string, stats mod
 			lineup.Rating,
 		)
 		if err != nil {
-			return err
+			return fmt.Errorf("Ошибка сохранения статистики для игрока ID=%d, матча ID=%d: %v\n", lineup.PlayerID, lineup.MatchID, err)
 		}
 	}
-
 	err = tx.Commit()
 	if err != nil {
 		return fmt.Errorf("ошибка коммита: %v", err)

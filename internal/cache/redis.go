@@ -7,8 +7,6 @@ import (
 	"football-data-miner/internal/models"
 	"time"
 
-	// Импортируем пакет api
-
 	"github.com/go-redis/redis/v8"
 )
 
@@ -36,7 +34,7 @@ func GetSeasonMatches(leagueID int, season string) ([]models.Match, error) {
 		return nil, fmt.Errorf("ошибка при получении матчей: %v", err)
 	}
 
-	var matches []models.Match // Используем models.Match
+	var matches []models.Match
 	err = json.Unmarshal([]byte(matchesJSON), &matches)
 	if err != nil {
 		return nil, fmt.Errorf("ошибка парсинга матчей: %v", err)
@@ -45,11 +43,9 @@ func GetSeasonMatches(leagueID int, season string) ([]models.Match, error) {
 	return matches, nil
 }
 
-func CacheSeasonMatches(leagueID int, season string, matches []models.Match) error { // Используем models.Match
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
+func CacheSeasonMatches(leagueID int, season string, matches []models.Match) error {
 	key := getSeasonKey(leagueID, season)
-	matchesJSON, err := rdb.Get(ctx, key).Result()
+	matchesJSON, err := json.Marshal(matches)
 	if err != nil {
 		return fmt.Errorf("ошибка сериализации: %v", err)
 	}
@@ -61,8 +57,9 @@ func CacheSeasonMatches(leagueID int, season string, matches []models.Match) err
 
 	return nil
 }
+
 func MarkMatchAsProcessed(leagueID int, season string, matchID int) {
-	processedKey := fmt.Sprintf("processed_matches:season:%d:%s", leagueID, season)
+	processedKey := getProcessedKey(leagueID, season)
 
 	err := rdb.SAdd(context.Background(), processedKey, matchID).Err()
 	if err != nil {
@@ -77,10 +74,11 @@ func MarkMatchAsProcessed(leagueID int, season string, matchID int) {
 		fmt.Printf("Ошибка при установке TTL для ключа %s: %v\n", processedKey, err)
 	}
 }
+
 func IsMatchProcessed(leagueID int, season string, matchID int) (bool, error) {
 	processedKey := getProcessedKey(leagueID, season)
 	isProcessed, err := rdb.SIsMember(context.Background(), processedKey, matchID).Result()
-	return isProcessed, err // Теперь возвращаем два значения
+	return isProcessed, err
 }
 
 func GetAllSeasonKeys() ([]string, error) {
@@ -88,23 +86,19 @@ func GetAllSeasonKeys() ([]string, error) {
 }
 
 func GetMatchFromRedis(fixtureID int) (*models.Match, error) {
-	ctx := context.Background()
 	keys, err := rdb.Keys(context.Background(), "matches:season:*").Result()
 	if err != nil {
 		return nil, fmt.Errorf("ошибка при поиске матчей: %v", err)
 	}
 
 	for _, key := range keys {
-		pipe := rdb.Pipeline()
-		getCmd := pipe.Get(ctx, key)
-		pipe.Exec(ctx)
-		result, err := getCmd.Result()
+		matchesJSON, err := rdb.Get(context.Background(), key).Result()
 		if err != nil {
 			continue
 		}
 
 		var matches []models.Match
-		err = json.Unmarshal([]byte(result), &matches)
+		err = json.Unmarshal([]byte(matchesJSON), &matches)
 		if err != nil {
 			continue
 		}

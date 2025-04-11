@@ -104,14 +104,14 @@ func MergeLineupAndPlayers(lineupResp LineupResponse, playersResp PlayersRespons
 			match.AwayCoachID = teamLineup.Coach.ID
 			match.AwayFormation = teamLineup.Formation
 		}
-		processPlayers(teamLineup.Team.ID, teamLineup.StartXI, playersResp, &lineups, false)
-		processPlayers(teamLineup.Team.ID, teamLineup.Substitutes, playersResp, &lineups, true)
+		processPlayers(match.ID, teamLineup.Team.ID, teamLineup.StartXI, playersResp, &lineups, false)
+		processPlayers(match.ID, teamLineup.Team.ID, teamLineup.Substitutes, playersResp, &lineups, true)
 	}
 
 	return lineups
 }
 
-func processPlayers(teamID int, players []struct {
+func processPlayers(matchID, teamID int, players []struct {
 	Player struct {
 		ID   int    `json:"id"`
 		Name string `json:"name"`
@@ -127,6 +127,7 @@ func processPlayers(teamID int, players []struct {
 
 		stats := findPlayerStats(teamID, player.Player.ID, playersResp)
 		lineup := models.Lineup{
+			MatchID:          matchID,
 			PlayerID:         player.Player.ID,
 			TeamID:           teamID,
 			Position:         player.Player.Pos,
