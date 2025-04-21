@@ -43,6 +43,7 @@ func FetchLineups(fixtureID int) (LineupResponse, error) {
 }
 
 func FetchPlayers(fixtureID int) (PlayersResponse, bool, error) {
+	var players PlayersResponse
 	endpoint := fmt.Sprintf("%s/fixtures/players?fixture=%d", os.Getenv("API_BASE_URL"), fixtureID)
 	resp, err := makeRequest(endpoint)
 	if err != nil {
@@ -55,13 +56,12 @@ func FetchPlayers(fixtureID int) (PlayersResponse, bool, error) {
 		return PlayersResponse{}, false, fmt.Errorf("Ошибка парсинга x-ratelimit-requests-remaining: %v", err)
 	}
 
-	var players PlayersResponse
 	err = json.NewDecoder(resp.Body).Decode(&players)
 	if err != nil {
 		return PlayersResponse{}, false, fmt.Errorf("Ошибка декодирования данных: %v", err)
 	}
-	if remaining < 3 {
-		fmt.Println("Меньше 3 запросов осталось. Завершаем обработку")
+	if remaining < 4 {
+		fmt.Println("Меньше 4 запросов осталось. Завершаем обработку")
 		return players, false, nil
 	}
 	return players, true, nil

@@ -60,3 +60,13 @@ func GetNextUnprocessedSeason() (int, string) {
 
 	return leagueID, season
 }
+
+func MarkSeasonAsProcessed(leagueID int, season string) error {
+	query := `
+        UPDATE league_seasons
+        SET is_processed = TRUE
+        WHERE league_id = $1 AND season = $2
+    `
+	_, err := dbConn.Exec(query, leagueID, season)
+	return err
+}

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"football-data-miner/internal/api"
 	"football-data-miner/internal/cache"
@@ -14,36 +15,43 @@ func main() {
 	db.InitDB()
 	cache.InitRedis()
 
-	if cache.IsCacheEmpty() {
-		fmt.Println("Кэш пустой. Берем следующий сезон из БД...")
-		leagueID, season := db.GetNextUnprocessedSeason()
-		if leagueID == 0 {
-			fmt.Println("Все сезоны обработаны!")
-			return
-		}
+	for {
+		if cache.IsCacheEmpty() {
+			fmt.Println("Кэш пустой. Берем следующий сезон из БД...")
+			leagueID, season := db.GetNextUnprocessedSeason()
+			if leagueID == 0 {
+				fmt.Println("Все сезоны обработаны!")
+				break
+			}
 
-		fmt.Printf("Обрабатываем сезон: лига %d, сезон %s\n", leagueID, season)
-		matches, err := api.FetchSeasonMatches(leagueID, season)
-		if err != nil {
-			fmt.Printf("Ошибка при получении матчей: %v\n", err)
-			return
-		}
+			fmt.Printf("Обрабатываем сезон: лига %d, сезон %s\n", leagueID, season)
+			matches, err := api.FetchSeasonMatches(leagueID, season)
+			if err != nil {
+				fmt.Printf("Ошибка при получении матчей: %v\n", err)
+				continue
+			}
 
-		err = cache.CacheSeasonMatches(leagueID, season, matches)
-		if err != nil {
-			fmt.Printf("Ошибка при сохранении матчей в Redis: %v\n", err)
-			return
-		}
+			err = cache.CacheSeasonMatches(leagueID, season, matches)
+			if err != nil {
+				fmt.Printf("Ошибка при сохранении матчей в Redis: %v\n", err)
+				continue
+			}
 
-		fmt.Println("Матчи успешно сохранены в Redis. Начинаем обработку...")
-		processMatches(leagueID, season, matches)
-	} else {
-		fmt.Println("Кэш содержит матчи. Продолжаем обработку...")
-		processCachedMatches()
+			fmt.Println("Матчи успешно сохранены в Redis. Начинаем обработку...")
+			shouldExit := processMatches(leagueID, season, matches)
+			if shouldExit {
+				break
+			}
+		} else {
+			fmt.Println("Кэш содержит матчи. Продолжаем обработку...")
+			processCachedMatches()
+		}
 	}
 }
 
-func processMatches(leagueID int, season string, matches []models.Match) {
+func processMatches(leagueID int, season string, matches []models.Match) bool {
+	totalMatches := len(matches)
+
 	for _, match := range matches {
 
 		processed, err := cache.IsMatchProcessed(leagueID, season, match.ID)
@@ -86,9 +94,16 @@ func processMatches(leagueID int, season string, matches []models.Match) {
 		db.SaveMatchDetails(match, leagueID, season, parsedStats, parsedLineups)
 		cache.MarkMatchAsProcessed(leagueID, season, match.ID)
 		if !canContinue {
-			break
+			return true
+		}
+		isCompleted, err := cache.IsSeasonCompleted(leagueID, season, totalMatches)
+		if isCompleted {
+			fmt.Printf("Сезон лиги %d, сезон %s завершен!\n", leagueID, season)
+			cleanupSeason(leagueID, season)
+			return false
 		}
 	}
+	return false
 }
 func processCachedMatches() {
 	keys, _ := cache.GetAllSeasonKeys()
@@ -107,4 +122,16 @@ func parseLeagueAndSeasonFromKey(key string) (int, string) {
 	parts := strings.Split(key, ":")
 	leagueID, _ := strconv.Atoi(parts[2])
 	return leagueID, parts[3]
+}
+
+func cleanupSeason(leagueID int, season string) {
+	cacheKey := cache.GetSeasonKey(leagueID, season)
+	processedKey := cache.GetProcessedKey(leagueID, season)
+
+	err := cache.Rdb.Del(context.Background(), cacheKey, processedKey).Err()
+	if err != nil {
+		fmt.Printf("Ошибка очистки кэша: %v\n", err)
+	} else {
+		fmt.Println("Кэш очищен.")
+	}
 }
