@@ -55,15 +55,15 @@ func FetchPlayers(fixtureID int) (PlayersResponse, bool, error) {
 	if err != nil {
 		return PlayersResponse{}, false, fmt.Errorf("Ошибка парсинга x-ratelimit-requests-remaining: %v", err)
 	}
-
-	err = json.NewDecoder(resp.Body).Decode(&players)
-	if err != nil {
-		return PlayersResponse{}, false, fmt.Errorf("Ошибка декодирования данных: %v", err)
-	}
 	if remaining < 4 {
 		fmt.Println("Меньше 4 запросов осталось. Завершаем обработку")
 		return players, false, nil
 	}
+	err = json.NewDecoder(resp.Body).Decode(&players)
+	if err != nil {
+		return PlayersResponse{}, false, fmt.Errorf("Ошибка декодирования данных: %v", err)
+	}
+
 	return players, true, nil
 }
 

@@ -12,6 +12,7 @@ import (
 )
 
 func main() {
+	var shouldExit bool
 	db.InitDB()
 	cache.InitRedis()
 
@@ -38,13 +39,13 @@ func main() {
 			}
 
 			fmt.Println("Матчи успешно сохранены в Redis. Начинаем обработку...")
-			shouldExit := processMatches(leagueID, season, matches)
-			if shouldExit {
-				break
-			}
+			shouldExit = processMatches(leagueID, season, matches)
 		} else {
 			fmt.Println("Кэш содержит матчи. Продолжаем обработку...")
-			processCachedMatches()
+			shouldExit = processCachedMatches()
+		}
+		if shouldExit {
+			break
 		}
 	}
 }
@@ -105,7 +106,7 @@ func processMatches(leagueID int, season string, matches []models.Match) bool {
 	}
 	return false
 }
-func processCachedMatches() {
+func processCachedMatches() bool {
 	keys, _ := cache.GetAllSeasonKeys()
 	for _, key := range keys {
 		leagueID, season := parseLeagueAndSeasonFromKey(key)
@@ -114,8 +115,9 @@ func processCachedMatches() {
 			fmt.Printf("Ошибка при получении матчей: %v\n", err)
 			continue
 		}
-		processMatches(leagueID, season, matches)
+		return processMatches(leagueID, season, matches)
 	}
+	return false
 }
 
 func parseLeagueAndSeasonFromKey(key string) (int, string) {
