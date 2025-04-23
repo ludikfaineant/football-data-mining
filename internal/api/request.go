@@ -102,7 +102,7 @@ func FetchSeasonMatches(leagueID int, season string) ([]models.Match, error) {
 	return matches, nil
 }
 func makeRequest(url string) (*http.Response, error) {
-	time.Sleep(7 * time.Second)
+	time.Sleep(300 * time.Millisecond)
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
 		return nil, fmt.Errorf("ошибка при создании запроса: %v", err)

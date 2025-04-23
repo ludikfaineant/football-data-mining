@@ -136,4 +136,5 @@ func cleanupSeason(leagueID int, season string) {
 	} else {
 		fmt.Println("Кэш очищен.")
 	}
+	err = db.MarkSeasonAsProcessed(leagueID, season)
 }
