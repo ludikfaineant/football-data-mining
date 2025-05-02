@@ -114,3 +114,70 @@ type MatchesOfSeason struct {
 		} `json:"goals"`
 	} `json:"response"`
 }
+type Season struct {
+	LeagueID int    // ID лиги
+	Season   string // Год сезона (например, "2023")
+}
+
+func (s *MatchStatistics) IsDefault() bool {
+	defaultStats := MatchStatistics{}
+	return s.HomeBallPossession == defaultStats.HomeBallPossession &&
+		s.AwayBallPossession == defaultStats.AwayBallPossession &&
+		s.HomeShotsOnGoal == defaultStats.HomeShotsOnGoal &&
+		s.AwayShotsOnGoal == defaultStats.AwayShotsOnGoal &&
+		s.HomeShotsOffGoal == defaultStats.HomeShotsOffGoal &&
+		s.AwayShotsOffGoal == defaultStats.AwayShotsOffGoal &&
+		s.HomeTotalShots == defaultStats.HomeTotalShots &&
+		s.AwayTotalShots == defaultStats.AwayTotalShots &&
+		s.HomeBlockedShots == defaultStats.HomeBlockedShots &&
+		s.AwayBlockedShots == defaultStats.AwayBlockedShots &&
+		s.HomeShotsInsidebox == defaultStats.HomeShotsInsidebox &&
+		s.AwayShotsInsidebox == defaultStats.AwayShotsInsidebox &&
+		s.HomeShotsOutsidebox == defaultStats.HomeShotsOutsidebox &&
+		s.AwayShotsOutsidebox == defaultStats.AwayShotsOutsidebox &&
+		s.HomeFouls == defaultStats.HomeFouls &&
+		s.AwayFouls == defaultStats.AwayFouls &&
+		s.HomeCornerKicks == defaultStats.HomeCornerKicks &&
+		s.AwayCornerKicks == defaultStats.AwayCornerKicks &&
+		s.HomeOffsides == defaultStats.HomeOffsides &&
+		s.AwayOffsides == defaultStats.AwayOffsides &&
+		s.HomeYellowCards == defaultStats.HomeYellowCards &&
+		s.AwayYellowCards == defaultStats.AwayYellowCards &&
+		s.HomeRedCards == defaultStats.HomeRedCards &&
+		s.AwayRedCards == defaultStats.AwayRedCards &&
+		s.HomeGoalkeeperSaves == defaultStats.HomeGoalkeeperSaves &&
+		s.AwayGoalkeeperSaves == defaultStats.AwayGoalkeeperSaves &&
+		s.HomeTotalPasses == defaultStats.HomeTotalPasses &&
+		s.AwayTotalPasses == defaultStats.AwayTotalPasses &&
+		s.HomePassesAccurate == defaultStats.HomePassesAccurate &&
+		s.AwayPassesAccurate == defaultStats.AwayPassesAccurate &&
+		s.HomePassesPercentage == defaultStats.HomePassesPercentage &&
+		s.AwayPassesPercentage == defaultStats.AwayPassesPercentage
+}
+
+func (l *Lineup) IsEmpty() bool {
+	defaultLineup := Lineup{}
+	return l.PlayerID == defaultLineup.PlayerID &&
+		l.TeamID == defaultLineup.TeamID &&
+		l.Position == defaultLineup.Position &&
+		l.IsSubstitute == defaultLineup.IsSubstitute &&
+		l.YellowCards == defaultLineup.YellowCards &&
+		l.RedCards == defaultLineup.RedCards &&
+		l.Goals == defaultLineup.Goals &&
+		l.Assists == defaultLineup.Assists &&
+		l.FoulsCommitted == defaultLineup.FoulsCommitted &&
+		l.FoulsDrawn == defaultLineup.FoulsDrawn &&
+		l.DribblesAttempts == defaultLineup.DribblesAttempts &&
+		l.DribblesSuccess == defaultLineup.DribblesSuccess &&
+		l.DuelsWon == defaultLineup.DuelsWon &&
+		l.PassesTotal == defaultLineup.PassesTotal &&
+		l.PassesAccuracy == defaultLineup.PassesAccuracy &&
+		l.TacklesTotal == defaultLineup.TacklesTotal &&
+		l.ShotsTotal == defaultLineup.ShotsTotal &&
+		l.ShotsOn == defaultLineup.ShotsOn &&
+		l.GoalsConceded == defaultLineup.GoalsConceded &&
+		l.GoalsSaved == defaultLineup.GoalsSaved &&
+		l.Minutes == defaultLineup.Minutes &&
+		l.Captain == defaultLineup.Captain &&
+		l.Rating == defaultLineup.Rating
+}

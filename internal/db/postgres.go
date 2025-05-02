@@ -7,47 +7,54 @@ import (
 	"log"
 	"os"
 
+	"football-data-miner/internal/models"
+
 	"github.com/joho/godotenv"
-	_ "github.com/lib/pq" // Импортируем драйвер PostgreSQL
+	_ "github.com/lib/pq"
 )
 
-var dbConn *sql.DB
-
-func init() {
-	if err := godotenv.Load(); err != nil {
-		log.Println("Файл .env не найден, используются переменные окружения системы")
-	}
-}
+var DB *sql.DB
 
 func InitDB() {
+	err := godotenv.Load()
+	if err != nil {
+		log.Fatalf("Ошибка загрузки .env файла: %v", err)
+	}
 	connStr := fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s sslmode=disable",
 		os.Getenv("POSTGRES_HOST"),
 		os.Getenv("POSTGRES_PORT"),
 		os.Getenv("POSTGRES_USER"),
 		os.Getenv("POSTGRES_PASSWORD"),
 		os.Getenv("POSTGRES_DB"))
-	var err error
-	dbConn, err = sql.Open("postgres", connStr)
+	DB, err = sql.Open("postgres", connStr)
 	if err != nil {
 		log.Fatalf("Ошибка подключения к БД: %v", err)
 	}
 
-	err = dbConn.Ping()
+	err = DB.Ping()
 	if err != nil {
 		log.Fatalf("Не удалось подключиться к БД: %v", err)
 	}
 
 	log.Println("Успешное подключение к БД")
 }
-
+func CloseDB() {
+	if DB != nil {
+		if err := DB.Close(); err != nil {
+			log.Printf("Ошибка при закрытии подключения к БД: %v", err)
+		} else {
+			log.Println("Подключение к БД успешно закрыто")
+		}
+	}
+}
 func GetNextUnprocessedSeason() (int, string) {
 	var leagueID int
 	var season string
-	err := dbConn.QueryRowContext(context.Background(), `
+	err := DB.QueryRowContext(context.Background(), `
         SELECT league_id, season
         FROM league_seasons
         WHERE is_processed = FALSE
-        ORDER BY season DESC
+        ORDER BY season ASC
         LIMIT 1
     `).Scan(&leagueID, &season)
 
@@ -67,6 +74,72 @@ func MarkSeasonAsProcessed(leagueID int, season string) error {
         SET is_processed = TRUE
         WHERE league_id = $1 AND season = $2
     `
-	_, err := dbConn.Exec(query, leagueID, season)
+	_, err := DB.Exec(query, leagueID, season)
 	return err
+}
+
+func GetProcessedSeasons() ([]models.Season, error) {
+	query := `
+        SELECT league_id, season
+        FROM league_seasons
+        WHERE is_processed = TRUE
+    `
+	rows, err := DB.Query(query)
+	if err != nil {
+		return nil, fmt.Errorf("ошибка запроса обработанных сезонов: %v", err)
+	}
+	defer rows.Close()
+
+	var seasons []models.Season
+	for rows.Next() {
+		var season models.Season
+		err := rows.Scan(&season.LeagueID, &season.Season)
+		if err != nil {
+			return nil, fmt.Errorf("ошибка сканирования сезона: %v", err)
+		}
+		seasons = append(seasons, season)
+	}
+
+	return seasons, nil
+}
+func IsMatchExists(matchID int) (bool, error) {
+	query := `
+        SELECT EXISTS (
+            SELECT 1
+            FROM matches
+            WHERE id = $1
+        )
+    `
+	var exists bool
+	err := DB.QueryRow(query, matchID).Scan(&exists)
+	if err != nil {
+		return false, fmt.Errorf("ошибка проверки существования матча ID=%d: %v", matchID, err)
+	}
+	return exists, nil
+}
+
+func GetSeasonMatches(leagueID int, seasonDate string) ([]models.Match, error) {
+	query := `
+        SELECT id, date, home_team_id, away_team_id, home_score, away_score 
+        FROM matches 
+        WHERE league_id = $1 AND date <= $2 
+        ORDER BY date ASC
+    `
+	rows, err := DB.Query(query, leagueID, seasonDate)
+	if err != nil {
+		return nil, fmt.Errorf("ошибка получения матчей сезона: %v", err)
+	}
+	defer rows.Close()
+
+	var matches []models.Match
+	for rows.Next() {
+		var match models.Match
+		err := rows.Scan(&match.ID, &match.Date, &match.HomeTeamID, &match.AwayTeamID, &match.HomeScore, &match.AwayScore)
+		if err != nil {
+			return nil, fmt.Errorf("ошибка сканирования матча: %v", err)
+		}
+		matches = append(matches, match)
+	}
+
+	return matches, nil
 }

@@ -14,19 +14,29 @@ import (
 
 var lastRequestTime time.Time = time.Now()
 
-func FetchStatistics(fixtureID int) ([]TeamStatistics, error) {
+func FetchStatistics(fixtureID int) ([]TeamStatistics, bool, error) {
 	endpoint := fmt.Sprintf("%s/fixtures/statistics?fixture=%d", os.Getenv("API_BASE_URL"), fixtureID)
 	resp, err := makeRequest(endpoint)
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	defer resp.Body.Close()
 
 	var statsResponse struct {
 		Response []TeamStatistics `json:"response"`
 	}
+	remainingStr := resp.Header.Get("x-ratelimit-requests-remaining")
+	remaining, err := strconv.Atoi(remainingStr)
+	if err != nil {
+		return []TeamStatistics{}, false, fmt.Errorf("Ошибка парсинга x-ratelimit-requests-remaining: %v", err)
+	}
+	if remaining < 4 {
+		fmt.Println("Меньше 4 запросов осталось. Завершаем обработку")
+		return statsResponse.Response, false, nil
+	}
+
 	err = json.NewDecoder(resp.Body).Decode(&statsResponse)
-	return statsResponse.Response, err
+	return statsResponse.Response, true, err
 }
 
 func FetchLineups(fixtureID int) (LineupResponse, error) {
@@ -42,29 +52,20 @@ func FetchLineups(fixtureID int) (LineupResponse, error) {
 	return lineups, err
 }
 
-func FetchPlayers(fixtureID int) (PlayersResponse, bool, error) {
+func FetchPlayers(fixtureID int) (PlayersResponse, error) {
 	var players PlayersResponse
 	endpoint := fmt.Sprintf("%s/fixtures/players?fixture=%d", os.Getenv("API_BASE_URL"), fixtureID)
 	resp, err := makeRequest(endpoint)
 	if err != nil {
-		return PlayersResponse{}, false, err
+		return PlayersResponse{}, err
 	}
 	defer resp.Body.Close()
-	remainingStr := resp.Header.Get("x-ratelimit-requests-remaining")
-	remaining, err := strconv.Atoi(remainingStr)
-	if err != nil {
-		return PlayersResponse{}, false, fmt.Errorf("Ошибка парсинга x-ratelimit-requests-remaining: %v", err)
-	}
-	if remaining < 4 {
-		fmt.Println("Меньше 4 запросов осталось. Завершаем обработку")
-		return players, false, nil
-	}
 	err = json.NewDecoder(resp.Body).Decode(&players)
 	if err != nil {
-		return PlayersResponse{}, false, fmt.Errorf("Ошибка декодирования данных: %v", err)
+		return PlayersResponse{}, fmt.Errorf("Ошибка декодирования данных: %v", err)
 	}
 
-	return players, true, nil
+	return players, nil
 }
 
 func FetchSeasonMatches(leagueID int, season string) ([]models.Match, error) {
@@ -75,7 +76,7 @@ func FetchSeasonMatches(leagueID int, season string) ([]models.Match, error) {
 	}
 	defer resp.Body.Close()
 
-	var matchesResponse models.MatchesOfSeason // Используем структуру из models
+	var matchesResponse models.MatchesOfSeason
 	err = json.NewDecoder(resp.Body).Decode(&matchesResponse)
 	if err != nil {
 		return nil, fmt.Errorf("ошибка декодирования JSON: %v", err)
@@ -103,6 +104,7 @@ func FetchSeasonMatches(leagueID int, season string) ([]models.Match, error) {
 }
 func makeRequest(url string) (*http.Response, error) {
 	time.Sleep(300 * time.Millisecond)
+	//time.Sleep(3 * time.Second)
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
 		return nil, fmt.Errorf("ошибка при создании запроса: %v", err)

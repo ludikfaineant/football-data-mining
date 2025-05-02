@@ -14,7 +14,11 @@ import (
 func main() {
 	var shouldExit bool
 	db.InitDB()
+	defer db.CloseDB()
+
 	cache.InitRedis()
+	//fmt.Println("Проверка недостающих матчей...")
+	//RecheckAndCacheMissingMatches()
 
 	for {
 		if cache.IsCacheEmpty() {
@@ -71,28 +75,28 @@ func processMatches(leagueID int, season string, matches []models.Match) bool {
 			continue
 		}
 
-		stats, err := api.FetchStatistics(match.ID)
+		stats, canContinue, err := api.FetchStatistics(match.ID)
 		if err != nil {
 			fmt.Printf("Ошибка статистики: %v\n", err)
 			continue
 		}
+		/*
+			lineups, err := api.FetchLineups(match.ID)
+			if err != nil {
+				fmt.Printf("Ошибка составов: %v\n", err)
+				continue
+			}
 
-		lineups, err := api.FetchLineups(match.ID)
-		if err != nil {
-			fmt.Printf("Ошибка составов: %v\n", err)
-			continue
-		}
-
-		players, canContinue, err := api.FetchPlayers(match.ID)
-		if err != nil {
-			fmt.Printf("Ошибка событий: %v\n", err)
-			continue
-		}
-
+			players, err := api.FetchPlayers(match.ID)
+			if err != nil {
+				fmt.Printf("Ошибка событий: %v\n", err)
+				continue
+			}
+		*/
 		parsedStats, _ := api.ParseStatistics(match.ID, stats)
-		parsedLineups := api.MergeLineupAndPlayers(lineups, players, &match)
-
-		db.SaveMatchDetails(match, leagueID, season, parsedStats, parsedLineups)
+		//		parsedLineups := api.MergeLineupAndPlayers(lineups, players, &match)
+		db.SaveMatchDetails(match, leagueID, season, parsedStats, nil)
+		//db.SaveMatchDetails(match, leagueID, season, parsedStats, parsedLineups)
 		cache.MarkMatchAsProcessed(leagueID, season, match.ID)
 		if !canContinue {
 			return true
@@ -137,4 +141,43 @@ func cleanupSeason(leagueID int, season string) {
 		fmt.Println("Кэш очищен.")
 	}
 	err = db.MarkSeasonAsProcessed(leagueID, season)
+}
+func RecheckAndCacheMissingMatches() {
+	processedSeasons, err := db.GetProcessedSeasons()
+	if err != nil {
+		fmt.Printf("Ошибка получения обработанных сезонов: %v\n", err)
+		return
+	}
+
+	for _, season := range processedSeasons {
+		leagueID := season.LeagueID
+		seasonName := season.Season
+
+		fmt.Printf("Проверяем сезон: лига %d, сезон %s\n", leagueID, seasonName)
+
+		matches, err := api.FetchSeasonMatches(leagueID, seasonName)
+		if err != nil {
+			fmt.Printf("Ошибка при получении матчей для сезона %d-%s: %v\n", leagueID, seasonName, err)
+			continue
+		}
+
+		var missingMatches []models.Match
+		for _, match := range matches {
+			exists, err := db.IsMatchExists(match.ID)
+			if err != nil {
+				fmt.Printf("Ошибка проверки матча ID=%d: %v\n", match.ID, err)
+				continue
+			}
+			if !exists {
+				missingMatches = append(missingMatches, match)
+			}
+		}
+
+		if len(missingMatches) > 0 {
+			fmt.Printf("Найдено %d недостающих матчей для сезона %d-%s\n", len(missingMatches), leagueID, seasonName)
+			processMatches(leagueID, seasonName, missingMatches)
+		} else {
+			fmt.Printf("Все матчи для сезона %d-%s уже есть в БД.\n", leagueID, seasonName)
+		}
+	}
 }

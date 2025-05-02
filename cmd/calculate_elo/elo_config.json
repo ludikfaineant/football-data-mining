@@ -1,0 +1,55 @@
+{
+    "tournament_weights": {
+        "2": {
+            "final": 60,
+            "semi_final": 50,
+            "quarter_final": 40,
+            "group_stage_and_round_of_16": 30,
+            "preliminary_matches": 15
+        },
+        "3": {
+            "final": 40,
+            "semi_final": 30,
+            "quarter_final": 20,
+            "group_stage_and_round_of_16": 15,
+            "preliminary_matches": 10
+        }
+    },
+    "national_league_weights": {
+        "top": [
+            "39",
+            "135",
+            "140",
+            "78"
+        ],
+        "mid": [
+            "61"
+        ],
+        "low": [
+            "88",
+            "94"
+        ],
+        "lower": [
+            "144"
+        ],
+        "other": []
+    },
+    "k_values": {
+        "top": 30,
+        "mid": 25,
+        "low": 20,
+        "lower": 15,
+        "other": 5
+    },
+    "initial_ratings": {
+        "39": 1500,
+        "135": 1500,
+        "140": 1500,
+        "78": 1500,
+        "61": 1450,
+        "88": 1400,
+        "94": 1400,
+        "144": 1350,
+        "other": 1250
+    }
+}

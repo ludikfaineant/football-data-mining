@@ -1,12 +1,13 @@
 package db
 
 import (
+	"database/sql"
 	"fmt"
 	"football-data-miner/internal/models"
 )
 
 func SaveTeamIfNotExists(teamID int, teamName string) error {
-	_, err := dbConn.Exec(`
+	_, err := DB.Exec(`
         INSERT INTO teams (id, fullname)
         VALUES ($1, $2)
         ON CONFLICT (id) DO NOTHING
@@ -15,7 +16,7 @@ func SaveTeamIfNotExists(teamID int, teamName string) error {
 }
 
 func SaveCoachIfNotExists(coachID int, coachName string) error {
-	_, err := dbConn.Exec(`
+	_, err := DB.Exec(`
         INSERT INTO coaches (id, fullname)
         VALUES ($1, $2)
         ON CONFLICT (id) DO NOTHING
@@ -24,32 +25,65 @@ func SaveCoachIfNotExists(coachID int, coachName string) error {
 }
 
 func SavePlayerIfNotExists(playerID int, playerName string) error {
-	_, err := dbConn.Exec(`
+	_, err := DB.Exec(`
         INSERT INTO players (id, fullname)
         VALUES ($1, $2)
         ON CONFLICT (id) DO NOTHING
     `, playerID, playerName)
 	return err
 }
-func SaveMatchDetails(match models.Match, leagueID int, season string, stats models.MatchStatistics, lineups []models.Lineup) error {
-	tx, err := dbConn.Begin()
-	if err != nil {
-		return err
-	}
-	defer func() {
-		if tx != nil {
-			tx.Rollback()
-		}
-	}()
 
-	_, err = tx.Exec(`
+func SaveMatchDetails(match models.Match, leagueID int, season string, stats models.MatchStatistics, lineups []models.Lineup) error {
+	tx, err := DB.Begin()
+	if err != nil {
+		return fmt.Errorf("ошибка начала транзакции: %v", err)
+	}
+	defer tx.Rollback()
+
+	if err := saveMatch(tx, match, leagueID, season); err != nil {
+		return fmt.Errorf("ошибка сохранения матча ID=%d: %v", match.ID, err)
+	}
+
+	if !stats.IsDefault() {
+		stats.MatchID = match.ID
+		if err := saveMatchStatistics(tx, stats); err != nil {
+			fmt.Printf("Ошибка статистики матча ID=%d: %v\n", match.ID, err)
+		} else {
+			fmt.Printf("Статистика матча ID=%d успешно сохранена.\n", match.ID)
+		}
+
+		for _, lineup := range lineups {
+			if lineup.IsEmpty() {
+				fmt.Printf("Матч ID=%d: состав игрока ID=%d отсутствует. Пропускаем.\n", match.ID, lineup.PlayerID)
+				continue
+			}
+			lineup.MatchID = match.ID
+			if err := saveLineup(tx, lineup); err != nil {
+				fmt.Printf("Ошибка состава ID=%d: %v\n", lineup.PlayerID, err)
+			} else {
+				fmt.Printf("Состав игрока ID=%d успешно сохранен.\n", lineup.PlayerID)
+			}
+		}
+	} else {
+		fmt.Printf("Матч ID=%d: статистика отсутствует. Пропускаем составы.\n", match.ID)
+	}
+
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("ошибка коммита: %v", err)
+	}
+	fmt.Printf("Матч ID=%d успешно сохранен в БД.\n", match.ID)
+	return nil
+}
+func saveMatch(tx *sql.Tx, match models.Match, leagueID int, season string) error {
+	query := `
         INSERT INTO matches (
             id, date, league_id, season, home_team_id, away_team_id,
             home_score, away_score, home_coach_id, away_coach_id,
             home_formation, away_formation
         ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
         ON CONFLICT (id) DO NOTHING
-    `,
+    `
+	result, err := tx.Exec(query,
 		match.ID,
 		match.Date,
 		leagueID,
@@ -64,9 +98,24 @@ func SaveMatchDetails(match models.Match, leagueID int, season string, stats mod
 		match.AwayFormation,
 	)
 	if err != nil {
-		return fmt.Errorf("ошибка сохранения матча ID=%d: %v\n", match.ID, err)
+		return fmt.Errorf("ошибка сохранения матча ID=%d: %v", match.ID, err)
 	}
-	_, err = tx.Exec(`
+
+	rowsAffected, _ := result.RowsAffected()
+	if rowsAffected == 0 {
+		return fmt.Errorf("матч ID=%d уже существует", match.ID)
+	}
+
+	return nil
+}
+
+func saveMatchStatistics(tx *sql.Tx, stats models.MatchStatistics) error {
+	if stats.IsDefault() {
+		fmt.Printf("Матч ID=%d: статистика отсутствует. Пропускаем.\n", stats.MatchID)
+		return nil
+	}
+
+	query := `
         INSERT INTO match_statistics (
             match_id, home_ball_possession, away_ball_possession,
             home_shots_on_goal, away_shots_on_goal,
@@ -84,99 +133,78 @@ func SaveMatchDetails(match models.Match, leagueID int, season string, stats mod
             home_total_passes, away_total_passes,
             home_passes_accurate, away_passes_accurate,
             home_passes_percentage, away_passes_percentage
-        ) VALUES (
-            $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33 
-        )
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33)
         ON CONFLICT (match_id) DO NOTHING
-    `,
+    `
+	_, err := tx.Exec(query,
 		stats.MatchID,
-		stats.HomeBallPossession,
-		stats.AwayBallPossession,
-		stats.HomeShotsOnGoal,
-		stats.AwayShotsOnGoal,
-		stats.HomeShotsOffGoal,
-		stats.AwayShotsOffGoal,
-		stats.HomeTotalShots,
-		stats.AwayTotalShots,
-		stats.HomeBlockedShots,
-		stats.AwayBlockedShots,
-		stats.HomeShotsInsidebox,
-		stats.AwayShotsInsidebox,
-		stats.HomeShotsOutsidebox,
-		stats.AwayShotsOutsidebox,
-		stats.HomeFouls,
-		stats.AwayFouls,
-		stats.HomeCornerKicks,
-		stats.AwayCornerKicks,
-		stats.HomeOffsides,
-		stats.AwayOffsides,
-		stats.HomeYellowCards,
-		stats.AwayYellowCards,
-		stats.HomeRedCards,
-		stats.AwayRedCards,
-		stats.HomeGoalkeeperSaves,
-		stats.AwayGoalkeeperSaves,
-		stats.HomeTotalPasses,
-		stats.AwayTotalPasses,
-		stats.HomePassesAccurate,
-		stats.AwayPassesAccurate,
-		stats.HomePassesPercentage,
-		stats.AwayPassesPercentage,
+		stats.HomeBallPossession, stats.AwayBallPossession,
+		stats.HomeShotsOnGoal, stats.AwayShotsOnGoal,
+		stats.HomeShotsOffGoal, stats.AwayShotsOffGoal,
+		stats.HomeTotalShots, stats.AwayTotalShots,
+		stats.HomeBlockedShots, stats.AwayBlockedShots,
+		stats.HomeShotsInsidebox, stats.AwayShotsInsidebox,
+		stats.HomeShotsOutsidebox, stats.AwayShotsOutsidebox,
+		stats.HomeFouls, stats.AwayFouls,
+		stats.HomeCornerKicks, stats.AwayCornerKicks,
+		stats.HomeOffsides, stats.AwayOffsides,
+		stats.HomeYellowCards, stats.AwayYellowCards,
+		stats.HomeRedCards, stats.AwayRedCards,
+		stats.HomeGoalkeeperSaves, stats.AwayGoalkeeperSaves,
+		stats.HomeTotalPasses, stats.AwayTotalPasses,
+		stats.HomePassesAccurate, stats.AwayPassesAccurate,
+		stats.HomePassesPercentage, stats.AwayPassesPercentage,
 	)
 	if err != nil {
-		return fmt.Errorf("ошибка статистики матча ID=%d: %v\n", match.ID, err)
+		return fmt.Errorf("ошибка сохранения статистики: %v", err)
 	}
+	return nil
+}
 
-	for _, lineup := range lineups {
-		_, err = tx.Exec(`
-            INSERT INTO lineups (
-                match_id, team_id, player_id, pos, is_substitute,
-                yellow_cards, red_cards, goals, assists,
-                fouls_committed, fouls_drawn, dribbles_attempts,
-                dribbles_success, duels_won, passes_total,
-                passes_accuracy, tackles_total, shots_total,
-                shots_on, goals_conceded, goals_saved,
-                minutes, captain, rating
-            ) VALUES (
-                $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12,
-                $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24
-            )
-            ON CONFLICT (match_id, team_id, player_id) DO NOTHING
-        `,
-			lineup.MatchID,
-			lineup.TeamID,
-			lineup.PlayerID,
-			lineup.Position,
-			lineup.IsSubstitute,
-			lineup.YellowCards,
-			lineup.RedCards,
-			lineup.Goals,
-			lineup.Assists,
-			lineup.FoulsCommitted,
-			lineup.FoulsDrawn,
-			lineup.DribblesAttempts,
-			lineup.DribblesSuccess,
-			lineup.DuelsWon,
-			lineup.PassesTotal,
-			lineup.PassesAccuracy,
-			lineup.TacklesTotal,
-			lineup.ShotsTotal,
-			lineup.ShotsOn,
-			lineup.GoalsConceded,
-			lineup.GoalsSaved,
-			lineup.Minutes,
-			lineup.Captain,
-			lineup.Rating,
-		)
-		if err != nil {
-			return fmt.Errorf("Ошибка сохранения статистики для игрока ID=%d, матча ID=%d: %v\n", lineup.PlayerID, lineup.MatchID, err)
-		}
-	}
-	err = tx.Commit()
+func saveLineup(tx *sql.Tx, lineup models.Lineup) error {
+	query := `
+        INSERT INTO lineups (
+            match_id, team_id, player_id, pos, is_substitute,
+            yellow_cards, red_cards, goals, assists,
+            fouls_committed, fouls_drawn, dribbles_attempts,
+            dribbles_success, duels_won, passes_total,
+            passes_accuracy, tackles_total, shots_total,
+            shots_on, goals_conceded, goals_saved,
+            minutes, captain, rating
+        ) VALUES (
+            $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12,
+            $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24
+        )
+        ON CONFLICT (match_id, team_id, player_id) DO NOTHING
+    `
+	_, err := tx.Exec(query,
+		lineup.MatchID,
+		lineup.TeamID,
+		lineup.PlayerID,
+		lineup.Position,
+		lineup.IsSubstitute,
+		lineup.YellowCards,
+		lineup.RedCards,
+		lineup.Goals,
+		lineup.Assists,
+		lineup.FoulsCommitted,
+		lineup.FoulsDrawn,
+		lineup.DribblesAttempts,
+		lineup.DribblesSuccess,
+		lineup.DuelsWon,
+		lineup.PassesTotal,
+		lineup.PassesAccuracy,
+		lineup.TacklesTotal,
+		lineup.ShotsTotal,
+		lineup.ShotsOn,
+		lineup.GoalsConceded,
+		lineup.GoalsSaved,
+		lineup.Minutes,
+		lineup.Captain,
+		lineup.Rating,
+	)
 	if err != nil {
-		return fmt.Errorf("ошибка коммита: %v", err)
+		return fmt.Errorf("ошибка выполнения запроса: %v", err)
 	}
-
-	tx = nil
 	return nil
 }
