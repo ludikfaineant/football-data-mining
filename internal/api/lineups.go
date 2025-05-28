@@ -84,7 +84,9 @@ type PlayerStatistics struct {
 		Total int `json:"total"`
 	} `json:"shots"`
 	Tackles struct {
-		Total int `json:"total"`
+		Blocks        int `json:"blocks"`
+		Total         int `json:"total"`
+		Interceptions int `json:"interceptions"`
 	} `json:"tackles"`
 }
 
@@ -127,30 +129,32 @@ func processPlayers(matchID, teamID int, players []struct {
 
 		stats := findPlayerStats(teamID, player.Player.ID, playersResp)
 		lineup := models.Lineup{
-			MatchID:          matchID,
-			PlayerID:         player.Player.ID,
-			TeamID:           teamID,
-			Position:         player.Player.Pos,
-			IsSubstitute:     isSubstitute,
-			YellowCards:      stats.Cards.Yellow,
-			RedCards:         stats.Cards.Red,
-			Goals:            safeInt(stats.Goals.Total),
-			Assists:          safeInt(stats.Goals.Assists),
-			FoulsCommitted:   safeInt(stats.Fouls.Committed),
-			FoulsDrawn:       safeInt(stats.Fouls.Drawn),
-			DribblesAttempts: safeInt(stats.Dribbles.Attempts),
-			DribblesSuccess:  safeInt(stats.Dribbles.Success),
-			DuelsWon:         safeInt(stats.Duels.Won),
-			PassesTotal:      safeInt(stats.Passes.Total),
-			PassesAccuracy:   parsePercentage(stats.Passes.Accuracy),
-			TacklesTotal:     safeInt(stats.Tackles.Total),
-			ShotsTotal:       safeInt(stats.Shots.Total),
-			ShotsOn:          safeInt(stats.Shots.On),
-			GoalsConceded:    safeInt(stats.Goals.Conceded),
-			GoalsSaved:       safeInt(stats.Goals.Saves),
-			Minutes:          safeInt(stats.Games.Minutes),
-			Captain:          stats.Games.Captain,
-			Rating:           parseRating(stats.Games.Rating),
+			MatchID:              matchID,
+			PlayerID:             player.Player.ID,
+			TeamID:               teamID,
+			Position:             player.Player.Pos,
+			IsSubstitute:         isSubstitute,
+			YellowCards:          stats.Cards.Yellow,
+			RedCards:             stats.Cards.Red,
+			Goals:                safeInt(stats.Goals.Total),
+			Assists:              safeInt(stats.Goals.Assists),
+			FoulsCommitted:       safeInt(stats.Fouls.Committed),
+			FoulsDrawn:           safeInt(stats.Fouls.Drawn),
+			DribblesAttempts:     safeInt(stats.Dribbles.Attempts),
+			DribblesSuccess:      safeInt(stats.Dribbles.Success),
+			DuelsWon:             safeInt(stats.Duels.Won),
+			PassesTotal:          safeInt(stats.Passes.Total),
+			PassesAccuracy:       parsePercentage(stats.Passes.Accuracy),
+			TacklesTotal:         safeInt(stats.Tackles.Total),
+			TacklesBlocks:        safeInt(stats.Tackles.Blocks),
+			TacklesInterceptions: safeInt(stats.Tackles.Interceptions),
+			ShotsTotal:           safeInt(stats.Shots.Total),
+			ShotsOn:              safeInt(stats.Shots.On),
+			GoalsConceded:        safeInt(stats.Goals.Conceded),
+			GoalsSaved:           safeInt(stats.Goals.Saves),
+			Minutes:              safeInt(stats.Games.Minutes),
+			Captain:              stats.Games.Captain,
+			Rating:               parseRating(stats.Games.Rating),
 		}
 		*lineups = append(*lineups, lineup)
 	}

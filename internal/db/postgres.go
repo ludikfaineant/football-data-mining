@@ -143,3 +143,78 @@ func GetSeasonMatches(leagueID int, seasonDate string) ([]models.Match, error) {
 
 	return matches, nil
 }
+func GetMissingMatchesFromDB(db *sql.DB) ([]models.Match, error) {
+	query := `
+        SELECT id, date, league_id, season, home_team_id, away_team_id, home_score, away_score
+        FROM matches
+        WHERE season >= '2018'
+          AND league_id IN (39, 78, 135, 140, 61)
+          AND id NOT IN (SELECT match_id FROM match_statistics)
+    `
+	rows, err := db.Query(query)
+	if err != nil {
+		return nil, fmt.Errorf("ошибка выполнения запроса: %v", err)
+	}
+	defer rows.Close()
+
+	var matches []models.Match
+	for rows.Next() {
+		var match models.Match
+		var leagueID int
+		var season string
+		err := rows.Scan(
+			&match.ID,
+			&match.Date,
+			&leagueID,
+			&season,
+			&match.HomeTeamID,
+			&match.AwayTeamID,
+			&match.HomeScore,
+			&match.AwayScore,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("ошибка сканирования матча: %v", err)
+		}
+		matches = append(matches, match)
+	}
+
+	return matches, nil
+}
+
+func GetLeagueAndSeasonForMatch(matchID int) (int, string, error) {
+	query := `
+        SELECT league_id, season
+        FROM matches
+        WHERE id = $1
+    `
+	var leagueID int
+	var season string
+	err := DB.QueryRow(query, matchID).Scan(&leagueID, &season)
+	if err != nil {
+		return 0, "", fmt.Errorf("ошибка получения лиги и сезона для матча ID=%d: %v", matchID, err)
+	}
+	return leagueID, season, nil
+}
+
+func GetProcessedMatches(leagueID int, season string) ([]int, error) {
+	query := `
+        SELECT id 
+        FROM matches
+        WHERE league_id=$1 and season=$2
+    `
+	rows, err := DB.Query(query, leagueID, season)
+	if err != nil {
+		return nil, fmt.Errorf("ошибка выполнения запроса: %v", err)
+	}
+	defer rows.Close()
+
+	var matchIDs []int
+	for rows.Next() {
+		var matchID int
+		if err := rows.Scan(&matchID); err != nil {
+			return nil, fmt.Errorf("ошибка сканирования ID матча: %v", err)
+		}
+		matchIDs = append(matchIDs, matchID)
+	}
+	return matchIDs, nil
+}

@@ -21,12 +21,17 @@ type Match struct {
 	AwayTeamID    int    `json:"away_team_id"`
 	HomeTeamName  string `json:"home_team_name"`
 	AwayTeamName  string `json:"away_team_name"`
-	HomeScore     int    `json:"home_score"`
-	AwayScore     int    `json:"away_score"`
+	HomeScore     *int   `json:"home_score"`
+	AwayScore     *int   `json:"away_score"`
 	HomeCoachID   int    `json:"home_coach_id"`
 	AwayCoachID   int    `json:"away_coach_id"`
 	HomeFormation string `json:"home_formation"`
 	AwayFormation string `json:"away_formation"`
+	Round         string `json:"round"`
+	//HomeExtratime *int   // Используем указатели для nullable значений
+	//AwayExtratime *int
+	//HomePenalty   *int
+	//AwayPenalty   *int
 }
 
 type MatchStatistics struct {
@@ -66,30 +71,32 @@ type MatchStatistics struct {
 }
 
 type Lineup struct {
-	MatchID          int     `json:"match_id"`
-	TeamID           int     `json:"team_id"`
-	PlayerID         int     `json:"player_id"`
-	Position         string  `json:"pos"`
-	IsSubstitute     bool    `json:"is_substitute"`
-	YellowCards      int     `json:"yellow_cards"`
-	RedCards         int     `json:"red_cards"`
-	Goals            int     `json:"goals"`
-	Assists          int     `json:"assists"`
-	FoulsCommitted   int     `json:"fouls_committed"`
-	FoulsDrawn       int     `json:"fouls_drawn"`
-	DribblesAttempts int     `json:"dribbles_attempts"`
-	DribblesSuccess  int     `json:"dribbles_success"`
-	DuelsWon         int     `json:"duels_won"`
-	PassesTotal      int     `json:"passes_total"`
-	PassesAccuracy   int     `json:"passes_accuracy"`
-	TacklesTotal     int     `json:"tackles_total"`
-	ShotsTotal       int     `json:"shots_total"`
-	ShotsOn          int     `json:"shots_on"`
-	GoalsConceded    int     `json:"goals_conceded"`
-	GoalsSaved       int     `json:"goals_saved"`
-	Minutes          int     `json:"minutes"`
-	Captain          bool    `json:"captain"`
-	Rating           float64 `json:"rating"`
+	MatchID              int     `json:"match_id"`
+	TeamID               int     `json:"team_id"`
+	PlayerID             int     `json:"player_id"`
+	Position             string  `json:"pos"`
+	IsSubstitute         bool    `json:"is_substitute"`
+	YellowCards          int     `json:"yellow_cards"`
+	RedCards             int     `json:"red_cards"`
+	Goals                int     `json:"goals"`
+	Assists              int     `json:"assists"`
+	FoulsCommitted       int     `json:"fouls_committed"`
+	FoulsDrawn           int     `json:"fouls_drawn"`
+	DribblesAttempts     int     `json:"dribbles_attempts"`
+	DribblesSuccess      int     `json:"dribbles_success"`
+	DuelsWon             int     `json:"duels_won"`
+	PassesTotal          int     `json:"passes_total"`
+	PassesAccuracy       int     `json:"passes_accuracy"`
+	TacklesTotal         int     `json:"tackles_total"`
+	TacklesBlocks        int     `json:"tackles_blocks"`
+	TacklesInterceptions int     `json:"tackles_interceptions"`
+	ShotsTotal           int     `json:"shots_total"`
+	ShotsOn              int     `json:"shots_on"`
+	GoalsConceded        int     `json:"goals_conceded"`
+	GoalsSaved           int     `json:"goals_saved"`
+	Minutes              int     `json:"minutes"`
+	Captain              bool    `json:"captain"`
+	Rating               float64 `json:"rating"`
 }
 
 type MatchesOfSeason struct {
@@ -98,6 +105,9 @@ type MatchesOfSeason struct {
 			ID   int    `json:"id"`
 			Date string `json:"date"`
 		} `json:"fixture"`
+		League struct {
+			Round string `json:"round"`
+		} `json:"league"`
 		Teams struct {
 			Home struct {
 				ID   int    `json:"id"`
@@ -108,10 +118,20 @@ type MatchesOfSeason struct {
 				Name string `json:"name"`
 			} `json:"away"`
 		} `json:"teams"`
-		Goals struct {
-			Home interface{} `json:"home"`
-			Away interface{} `json:"away"`
-		} `json:"goals"`
+		Score struct {
+			Fulltime struct {
+				Home int `json:"home"` // Nullable значение
+				Away int `json:"away"`
+			} `json:"fulltime"`
+			/*Extratime struct {
+				Home *int `json:"home"` // Nullable значение
+				Away *int `json:"away"`
+			} `json:"extratime"`
+			Penalty struct {
+				Home *int `json:"home"` // Nullable значение
+				Away *int `json:"away"`
+			} `json:"penalty"`*/
+		} `json:"score"`
 	} `json:"response"`
 }
 type Season struct {
@@ -179,5 +199,7 @@ func (l *Lineup) IsEmpty() bool {
 		l.GoalsSaved == defaultLineup.GoalsSaved &&
 		l.Minutes == defaultLineup.Minutes &&
 		l.Captain == defaultLineup.Captain &&
-		l.Rating == defaultLineup.Rating
+		l.Rating == defaultLineup.Rating &&
+		l.TacklesBlocks == defaultLineup.TacklesBlocks &&
+		l.TacklesInterceptions == defaultLineup.TacklesInterceptions
 }

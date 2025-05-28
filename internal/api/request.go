@@ -30,12 +30,11 @@ func FetchStatistics(fixtureID int) ([]TeamStatistics, bool, error) {
 	if err != nil {
 		return []TeamStatistics{}, false, fmt.Errorf("Ошибка парсинга x-ratelimit-requests-remaining: %v", err)
 	}
+	err = json.NewDecoder(resp.Body).Decode(&statsResponse)
 	if remaining < 4 {
 		fmt.Println("Меньше 4 запросов осталось. Завершаем обработку")
 		return statsResponse.Response, false, nil
 	}
-
-	err = json.NewDecoder(resp.Body).Decode(&statsResponse)
 	return statsResponse.Response, true, err
 }
 
@@ -91,12 +90,13 @@ func FetchSeasonMatches(leagueID int, season string) ([]models.Match, error) {
 			AwayTeamID:    m.Teams.Away.ID,
 			HomeTeamName:  m.Teams.Home.Name,
 			AwayTeamName:  m.Teams.Away.Name,
-			HomeScore:     safeInt(m.Goals.Home),
-			AwayScore:     safeInt(m.Goals.Away),
+			HomeScore:     toIntPtr(safeInt(m.Score.Fulltime.Home)),
+			AwayScore:     toIntPtr(safeInt(m.Score.Fulltime.Away)),
 			HomeCoachID:   0,
 			AwayCoachID:   0,
 			HomeFormation: "",
 			AwayFormation: "",
+			Round:         m.League.Round,
 		})
 	}
 
@@ -104,7 +104,7 @@ func FetchSeasonMatches(leagueID int, season string) ([]models.Match, error) {
 }
 func makeRequest(url string) (*http.Response, error) {
 	time.Sleep(300 * time.Millisecond)
-	//time.Sleep(3 * time.Second)
+	//time.Sleep(1 * time.Second)
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
 		return nil, fmt.Errorf("ошибка при создании запроса: %v", err)
@@ -149,4 +149,8 @@ func safeInt(value interface{}) int {
 	default:
 		return 0
 	}
+}
+
+func toIntPtr(value int) *int {
+	return &value
 }

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"math"
+	"strings"
 	"time"
 
 	"encoding/json"
@@ -13,6 +14,24 @@ import (
 )
 
 var processedMatchesCount int
+
+const InitialForm = 1.0
+
+var RegularLeagues = map[int]bool{
+	39:  true,
+	78:  true,
+	135: true,
+	61:  true,
+	140: true,
+	144: true,
+	88:  true,
+	94:  true,
+}
+
+func IsRegularLeague(leagueID int) bool {
+	_, exists := RegularLeagues[leagueID]
+	return exists
+}
 
 type EloConfig struct {
 	TournamentWeights     map[string]map[string]int `json:"tournament_weights"`
@@ -73,37 +92,28 @@ func GetLeagueType(leagueID int) string {
 
 	return "other"
 }
-
-func GetMatchStage(matchDate string, leagueID int, season string) string {
-	parsedDate, _ := time.Parse("2006-01-02", matchDate[:10])
-
-	var positionFromEnd int
-	err := db.DB.QueryRow(`
-        SELECT COUNT(*) 
-        FROM matches 
-        WHERE league_id = $1 AND season = $2`,
-		leagueID, season).Scan(&positionFromEnd)
-	if err != nil {
-		log.Fatalf("Ошибка подсчета матчей: %v", err)
-	}
-
+func GetMatchStage(round string) string {
+	// Классификация значений поля round
 	switch {
-	case positionFromEnd == 1:
+	case strings.Contains(strings.ToLower(round), "final"):
 		return "final"
-	case positionFromEnd <= 5:
+	case strings.Contains(strings.ToLower(round), "semi-final") || strings.Contains(strings.ToLower(round), "semi final"):
 		return "semi_final"
-	case positionFromEnd <= 13:
+	case strings.Contains(strings.ToLower(round), "quarter-final") || strings.Contains(strings.ToLower(round), "quarter final"):
 		return "quarter_final"
-	case parsedDate.Month() >= time.September:
+	case strings.Contains(strings.ToLower(round), "round of 16") || strings.Contains(strings.ToLower(round), "16th finals") || strings.Contains(strings.ToLower(round), "round of 8") || strings.Contains(strings.ToLower(round), "8th finals") || strings.Contains(strings.ToLower(round), "play-off"):
+		return "group_stage_and_round_of_16"
+	case strings.Contains(strings.ToLower(round), "group") || strings.Contains(strings.ToLower(round), "regular season") || strings.Contains(strings.ToLower(round), "league stage"):
 		return "group_stage_and_round_of_16"
 	default:
-		return "preliminary_matches"
+		return "preliminary_matches" // Значение по умолчанию
 	}
 }
+
 func GetKValue(leagueID int, matchStage string) int {
 	leagueIDStr := fmt.Sprintf("%d", leagueID)
 
-	if leagueID == 2 || leagueID == 3 {
+	if leagueID == 2 || leagueID == 3 || leagueID == 4 || leagueID == 1 {
 		if tournamentWeights, exists := eloConfig.TournamentWeights[leagueIDStr]; exists {
 			if k, ok := tournamentWeights[matchStage]; ok {
 				return k
@@ -115,6 +125,7 @@ func GetKValue(leagueID int, matchStage string) int {
 	category := GetLeagueType(leagueID)
 	return eloConfig.KValues[category]
 }
+
 func GetInitialRating(leagueID int) int {
 	leagueIDStr := fmt.Sprintf("%d", leagueID)
 
@@ -146,6 +157,7 @@ func GetPreviousElo(teamID int, currentMatchDate string, leagueID int) int {
 
 	return elo
 }
+
 func CalculateElo(homeElo, awayElo, homeScore, awayScore int, kFactor float64) (int, int) {
 	dr := float64(homeElo-awayElo) + 100
 
@@ -168,12 +180,63 @@ func CalculateElo(homeElo, awayElo, homeScore, awayScore int, kFactor float64) (
 	return newHome, newAway
 }
 
+func GetPreviousForm(teamID int, leagueID int, season string, MatchDate string) float64 {
+	var form float64
+
+	err := db.DB.QueryRow(`
+        SELECT COALESCE(
+            (SELECT CASE 
+                WHEN home_team_id = $1 THEN home_team_form 
+                ELSE away_team_form 
+            END AS form 
+            FROM matches 
+            WHERE (home_team_id = $1 OR away_team_id = $1) 
+              AND league_id = $2
+			  AND season = $3
+              AND date < $4
+            ORDER BY date DESC 
+            LIMIT 1
+        ),1.0)`, teamID, leagueID, season, MatchDate).Scan(&form)
+	if err != nil && err != sql.ErrNoRows {
+		fmt.Printf("Ошибка получения превформ для teamID=%d, leagueID=%d, season=%s, MatchDate=%s: %v\n",
+			teamID, leagueID, season, MatchDate, err)
+	}
+	return form
+}
+
+func UpdateTeamForms(tx *sql.Tx, matchID int, MatchDate string, homeID, awayID int, homeScore, awayScore int, leagueID int, season string, gamma float64) error {
+	var homeForm, awayForm float64
+	prevHomeForm := GetPreviousForm(homeID, leagueID, season, MatchDate)
+	prevAwayForm := GetPreviousForm(awayID, leagueID, season, MatchDate)
+
+	// Обновляем форму в зависимости от результата матча
+	switch {
+	case homeScore > awayScore: // Победа домашней команды
+		homeForm = prevHomeForm + gamma*prevAwayForm
+		awayForm = prevAwayForm - gamma*prevAwayForm
+	case awayScore > homeScore: // Победа гостевой команды
+		homeForm = prevHomeForm - gamma*prevHomeForm
+		awayForm = prevAwayForm + gamma*prevHomeForm
+	default: // Ничья
+		homeForm = prevHomeForm - gamma*(prevHomeForm-prevAwayForm)
+		awayForm = prevAwayForm - gamma*(prevAwayForm-prevHomeForm)
+	}
+
+	// Обновляем форму в таблице matches
+	_, err := tx.Exec(`
+        UPDATE matches 
+        SET home_team_form = $1, away_team_form = $2 
+        WHERE id = $3`, homeForm, awayForm, matchID)
+	if err != nil {
+		return fmt.Errorf("ошибка обновления формы для матча ID=%d: %v", matchID, err)
+	}
+
+	fmt.Printf("Матч ID=%d: Форма обновлена (Home=%.2f → %.2f, Away=%.2f → %.2f)\n",
+		matchID, prevHomeForm, homeForm, prevAwayForm, awayForm)
+	return nil
+}
+
 func ProcessNextMatch() error {
-	/*if processedMatchesCount >= 1000 {
-		fmt.Println("Тест завершен: обработано 1000 матчей.")
-		time.Sleep(time.Second)
-		return nil
-	}*/
 	var matchID, homeID, awayID, homeScore, awayScore int
 	var matchDateStr, season string
 	var leagueID int
@@ -194,10 +257,15 @@ func ProcessNextMatch() error {
 		return fmt.Errorf("ошибка транзакции: %v", err)
 	}
 	defer tx.Rollback()
+	var round string
+	err = db.DB.QueryRow(`
+    SELECT round 
+    FROM matches 
+    WHERE id = $1`, matchID).Scan(&round)
 
 	matchStage := ""
-	if leagueID == 2 || leagueID == 3 {
-		matchStage = GetMatchStage(matchDateStr, leagueID, season)
+	if leagueID == 2 || leagueID == 3 || leagueID == 1 || leagueID == 4 {
+		matchStage = GetMatchStage(round)
 	}
 
 	homeElo := GetPreviousElo(homeID, matchDateStr, leagueID)
@@ -216,6 +284,16 @@ func ProcessNextMatch() error {
 
 	fmt.Printf("Матч ID=%d: Elo обновлены (Home=%d → %d, Away=%d → %d)\n",
 		matchID, homeElo, newHomeElo, awayElo, newAwayElo)
+
+	if IsRegularLeague(leagueID) {
+		gamma := 0.33
+		if err := UpdateTeamForms(tx, matchID, matchDateStr, homeID, awayID, homeScore, awayScore, leagueID, season, gamma); err != nil {
+			return fmt.Errorf("ошибка обновления формы для матча ID=%d: %v", matchID, err)
+		}
+	} else {
+		fmt.Printf("Матч ID=%d: Не регулярный чемпионат. Форма не обновляется.\n", matchID)
+	}
+
 	processedMatchesCount++
 	return tx.Commit()
 }
@@ -232,6 +310,11 @@ func main() {
 	for {
 		err := ProcessNextMatch()
 		if err != nil {
+			if err == sql.ErrNoRows {
+				fmt.Println("Программа завершена: все матчи обработаны.")
+				break
+			}
+
 			log.Fatalf("Ошибка: %v", err)
 		}
 	}

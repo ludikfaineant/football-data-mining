@@ -13,6 +13,23 @@
             "quarter_final": 20,
             "group_stage_and_round_of_16": 15,
             "preliminary_matches": 10
+        },
+        "4": {
+            "final": 60,
+            "semi_final": 50,
+            "quarter_final": 40,
+            "group_stage_and_round_of_16": 30,
+            "preliminary_matches": 15
+        },
+        "1": {
+            "final": 60,
+            "semi_final": 50,
+            "quarter_final": 40,
+            "group_stage_and_round_of_16": 30,
+            "preliminary_matches": 15
+        },
+        "531": {
+            "final": 40
         }
     },
     "national_league_weights": {
